@@ -39,9 +39,9 @@ class DefaultFirebaseOptions {
     apiKey: 'YOUR API KEY',
     appId: 'YOUR APP ID',
     messagingSenderId: '',
-    projectId: 'flutterfire-ui-codelab',
-    authDomain: 'flutterfire-ui-codelab.firebaseapp.com',
-    storageBucket: 'flutterfire-ui-codelab.appspot.com',
+    projectId: 'spiritualwelfare',
+    authDomain: 'spiritualwelfare.firebaseapp.com',
+    storageBucket: 'spiritualwelfare.appspot.com',
     measurementId: 'MEASUREMENT ID',
   );
 
@@ -49,16 +49,16 @@ class DefaultFirebaseOptions {
     apiKey: 'YOUR API KEY',
     appId: 'YOUR APP ID',
     messagingSenderId: '',
-    projectId: 'flutterfire-ui-codelab',
-    storageBucket: 'flutterfire-ui-codelab.appspot.com',
+    projectId: 'spiritualwelfare',
+    storageBucket: 'spiritualwelfare.appspot.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'YOUR API KEY',
     appId: 'YOUR APP ID',
     messagingSenderId: '',
-    projectId: 'flutterfire-ui-codelab',
-    storageBucket: 'flutterfire-ui-codelab.appspot.com',
+    projectId: 'spiritualwelfare',
+    storageBucket: 'spiritualwelfare.appspot.com',
     iosClientId: 'IOS CLIENT ID',
     iosBundleId: 'com.example.BUNDLE',
   );
@@ -67,8 +67,8 @@ class DefaultFirebaseOptions {
     apiKey: 'YOUR API KEY',
     appId: 'YOUR APP ID',
     messagingSenderId: '',
-    projectId: 'flutterfire-ui-codelab',
-    storageBucket: 'flutterfire-ui-codelab.appspot.com',
+    projectId: 'spiritualwelfare',
+    storageBucket: 'spiritualwelfare.appspot.com',
     iosClientId: 'IOS CLIENT ID',
     iosBundleId: 'com.example.BUNDLE',
   );

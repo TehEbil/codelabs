@@ -1,6 +1,1 @@
-{
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  }
-}
+{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"flutter":{"platforms":{"android":{"default":{"projectId":"spiritualwelfare","appId":"1:834336712270:android:a83224a9bc8b11782d851f","fileOutput":"android/app/google-services.json"}}}}}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "834336712270",
+    "project_id": "spiritualwelfare",
+    "storage_bucket": "spiritualwelfare.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:834336712270:android:a83224a9bc8b11782d851f",
+        "android_client_info": {
+          "package_name": "com.cycrosoft.spiritualwelfare"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDX8ayyUfFXhQUB4fb6wBA7W9I7hexEOOA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
