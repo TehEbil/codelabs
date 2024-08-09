@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class ChatbotScreen extends StatefulWidget {
@@ -28,23 +28,39 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     _speech = stt.SpeechToText();
   }
 
-  Future<void> _startListening() async {
-    bool available = await _speech.initialize(
-      onStatus: (val) => setState(() => _isListening = _speech.isListening),
-      onError: (val) => print('Speech recognition error: $val'),
-    );
-    if (available) {
-      await _speech.listen(onResult: (val) {
-        setState(() {
-          _messageController.text = val.recognizedWords;
-        });
-      });
-    }
-  }
+  Future<void> _pickAndUploadFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      print(result);
 
-  Future<void> _stopListening() async {
-    await _speech.stop();
-    setState(() => _isListening = false);
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String fileName = result.files.single.name;
+
+        // Upload file to Firebase Storage
+        final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
+        UploadTask uploadTask = storageRef.putFile(file);
+
+        // Wait for the upload to complete
+        TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
+
+        // Get download URL and send as a message
+        String fileUrl = await taskSnapshot.ref.getDownloadURL();
+        await chatCollection.add({
+          'message': fileUrl,
+          'sender': 'User',
+          'timestamp': FieldValue.serverTimestamp(),
+          'userId': currentUser,
+          'type': 'file', // Indicate this message is a file
+        });
+
+        print('File uploaded successfully');
+      } else {
+        print('No file selected or invalid file path');
+      }
+    } catch (e) {
+      print('Error picking or uploading file: $e');
+    }
   }
 
   Widget _buildInputArea() {
@@ -78,6 +94,51 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     );
   }
 
+  Future<void> _sendMessage() async {
+    if (_messageController.text.isEmpty) return;
+
+    try {
+      await chatCollection.add({
+        'message': _messageController.text,
+        'sender': 'User',
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': currentUser,
+      });
+
+      // Simulate AI response
+      await Future<void>.delayed(const Duration(seconds: 1));
+      await chatCollection.add({
+        'message': 'This is an AI response to: ${_messageController.text}',
+        'sender': 'AI',
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': currentUser,
+      });
+
+      _messageController.clear();
+    } catch (e) {
+      print('Error sending message: $e');
+    }
+  }
+
+  Future<void> _startListening() async {
+    bool available = await _speech.initialize(
+      onStatus: (val) => setState(() => _isListening = _speech.isListening),
+      onError: (val) => print('Speech recognition error: $val'),
+    );
+    if (available) {
+      _speech.listen(onResult: (val) {
+        setState(() {
+          _messageController.text = val.recognizedWords;
+        });
+      });
+    }
+  }
+
+  Future<void> _stopListening() async {
+    _speech.stop();
+    setState(() => _isListening = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,14 +151,13 @@ class ChatbotScreenState extends State<ChatbotScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: chatCollection
                   .where('userId', isEqualTo: currentUser)
-                  .orderBy('timestamp', descending: true)
+                  .orderBy('timestamp', descending: false)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  print(snapshot.error);
                   return Center(child: Text('Error: ${snapshot.error}'));
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -131,7 +191,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              message as String,
+                              message,
                               style: const TextStyle(color: Colors.white),
                             ),
                             const SizedBox(height: 5),
@@ -152,65 +212,5 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         ],
       ),
     );
-  }
-
-  // Function to pick and upload files
-  Future<void> _pickAndUploadFile() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
-
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
-        String fileName = result.files.single.name;
-
-        // Upload file to Firebase Storage
-        final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
-        UploadTask uploadTask = storageRef.putFile(file);
-
-        // Wait for the upload to complete
-        TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
-
-        // Get download URL and send as a message
-        String fileUrl = await taskSnapshot.ref.getDownloadURL();
-        await chatCollection.add({
-          'message': fileUrl,
-          'sender': 'User',
-          'timestamp': FieldValue.serverTimestamp(),
-          'userId': currentUser,
-          'type': 'file', // Indicate this message is a file
-        });
-      }
-    } catch (e) {
-      print('Error picking or uploading file: $e');
-    }
-  }
-
-  Future<void> _sendMessage() async {
-    print('here');
-    if (_messageController.text.isEmpty) return;
-
-    try {
-      await chatCollection.add({
-        'message': _messageController.text,
-        'sender': 'User',
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': currentUser,
-      });
-
-      _messageController.clear();
-
-      // Simulate AI response
-      await Future<void>.delayed(const Duration(seconds: 1));
-      await chatCollection.add({
-        'message': 'This is an AI response to: ${_messageController.text}',
-        'sender': 'AI',
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': currentUser,
-      });
-
-    } catch (e) {
-      print(e);
-      print('Error sending message: $e');
-    }
   }
 }
