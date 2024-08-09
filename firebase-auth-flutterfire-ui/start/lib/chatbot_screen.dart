@@ -1,12 +1,11 @@
-import 'dart:typed_data';
-import 'dart:io' as io;
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:url_launcher/url_launcher.dart';
+import 'chat/speech_service.dart';
+import 'chat/chat_message_bubble.dart';
+import 'chat/date_badge.dart';
+import 'chat/firebase_service.dart';
+import 'chat/file_picker_service.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -17,84 +16,29 @@ class ChatbotScreen extends StatefulWidget {
 
 class ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final CollectionReference chatCollection =
-      FirebaseFirestore.instance.collection('chats');
-  final String currentUser = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
-  late stt.SpeechToText _speech;
-  bool _isListening = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _speech = stt.SpeechToText();
-  }
-
-  Future<void> _pickAndUploadFile({bool isPhoto = false}) async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: isPhoto ? FileType.image : FileType.any,
-      );
-
-      if (result != null) {
-        String fileName = result.files.single.name;
-
-        if (kIsWeb) {
-          Uint8List? fileBytes = result.files.single.bytes;
-          if (fileBytes != null) {
-            final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
-            UploadTask uploadTask = storageRef.putData(fileBytes);
-
-            TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
-            String fileUrl = await taskSnapshot.ref.getDownloadURL();
-            await chatCollection.add({
-              'message': fileUrl,
-              'sender': 'User',
-              'timestamp': FieldValue.serverTimestamp(),
-              'userId': currentUser,
-              'type': isPhoto ? 'image' : 'file',
-            });
-          }
-        } else {
-          String? filePath = result.files.single.path;
-          if (filePath != null) {
-            io.File file = io.File(filePath);
-
-            final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
-            UploadTask uploadTask = storageRef.putFile(file);
-
-            TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
-            String fileUrl = await taskSnapshot.ref.getDownloadURL();
-            await chatCollection.add({
-              'message': fileUrl,
-              'sender': 'User',
-              'timestamp': FieldValue.serverTimestamp(),
-              'userId': currentUser,
-              'type': isPhoto ? 'image' : 'file',
-            });
-          }
-        }
-
-        print('File uploaded successfully');
-      } else {
-        print('No file selected');
-      }
-    } catch (e) {
-      print('Error picking or uploading file: $e');
-    }
-  }
+  final SpeechService _speechService = SpeechService();
+  final FirebaseService _firebaseService = FirebaseService();
+  final FilePickerService _filePickerService = FilePickerService();
+  bool isListening = false;
 
   Future<void> _recordAndSendMessage() async {
-    bool available = await _speech.initialize();
+    bool available = await _speechService.initialize();
     if (available) {
-      _speech.listen(onResult: (val) {
+      setState(() {
+        isListening = true;
+      });
+      _speechService.listen(onResult: (text) {
         setState(() {
-          _messageController.text = val.recognizedWords;
+          _messageController.text = text;
         });
       });
       await Future.delayed(const Duration(milliseconds: 200)); // Delay before stopping
-      _speech.stop();
+      _speechService.stop();
       _sendMessage();
       _messageController.clear();
+      setState(() {
+        isListening = false;
+      });
     }
   }
 
@@ -105,11 +49,11 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         children: [
           IconButton(
             icon: const Icon(Icons.photo),
-            onPressed: () => _pickAndUploadFile(isPhoto: true),
+            onPressed: () => _filePickerService.pickAndUploadFile(isPhoto: true),
           ),
           IconButton(
             icon: const Icon(Icons.attach_file),
-            onPressed: () => _pickAndUploadFile(),
+            onPressed: () => _filePickerService.pickAndUploadFile(),
           ),
           IconButton(
             icon: const Icon(Icons.mic),
@@ -137,24 +81,12 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     if (_messageController.text.isEmpty) return;
 
     try {
-      await chatCollection.add({
-        'message': _messageController.text,
-        'sender': 'User',
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': currentUser,
-        'type': 'text',
-      });
+      await _firebaseService.sendMessage(_messageController.text, 'text');
+      _messageController.clear();
 
       await Future<void>.delayed(const Duration(seconds: 1));
-      await chatCollection.add({
-        'message': 'This is an AI response to: ${_messageController.text}',
-        'sender': 'AI',
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': currentUser,
-        'type': 'text',
-      });
-
-      _messageController.clear();
+      await _firebaseService.sendMessage(
+          'This is an AI response to: ${_messageController.text}', 'text');
     } catch (e) {
       print('Error sending message: $e');
     }
@@ -170,8 +102,8 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         children: [
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: chatCollection
-                  .where('userId', isEqualTo: currentUser)
+              stream: _firebaseService.chatCollection
+                  .where('userId', isEqualTo: _firebaseService.currentUser)
                   .orderBy('timestamp', descending: false)
                   .snapshots(),
               builder: (context, snapshot) {
@@ -206,10 +138,18 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                     }
 
                     return Column(
-                      crossAxisAlignment: isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      crossAxisAlignment: isCurrentUser
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
                       children: [
-                        if (showDateBadge) _buildDateBadge(time),
-                        _buildMessageBubble(message, isCurrentUser, data['type'], time),
+                        if (showDateBadge) DateBadge(timestamp: timestamp),
+                        ChatMessageBubble(
+                          message: message,
+                          isCurrentUser: isCurrentUser,
+                          type: data['type'],
+                          time: time,
+                          onFileTap: _openFile,
+                        ),
                       ],
                     );
                   },
@@ -223,78 +163,6 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     );
   }
 
-  Widget _buildMessageBubble(String message, bool isCurrentUser, String type, DateTime time) {
-    return Align(
-      alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isCurrentUser ? Colors.blueAccent : Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (type == 'text') ...[
-              Text(
-                message,
-                style: const TextStyle(color: Colors.white),
-              ),
-            ] else if (type == 'image') ...[
-              Image.network(message),
-            ] else ...[
-              InkWell(
-                onTap: () => _openFile(message),
-                child: Row(
-                  children: [
-                    Icon(Icons.insert_drive_file, color: Colors.white),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        'Open File',
-                        style: const TextStyle(color: Colors.white),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 5),
-            Text(
-              time.toLocal().toString(),
-              style: const TextStyle(fontSize: 10, color: Colors.white70),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateBadge(DateTime date) {
-    String formattedDate;
-    final now = DateTime.now();
-    if (_isSameDay(date, now)) {
-      formattedDate = "Heute";
-    } else if (_isSameDay(date, now.subtract(const Duration(days: 1)))) {
-      formattedDate = "Gestern";
-    } else {
-      formattedDate = '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
-    }
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(formattedDate),
-      ),
-    );
-  }
-
   bool _isSameDay(Timestamp? t1, Timestamp? t2) {
     if (t1 == null || t2 == null) return false;
     final d1 = t1.toDate();
@@ -302,8 +170,12 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
   }
 
-  void _openFile(String url) {
-    // Implement logic to open the file URL in a browser or using a file viewer
-    print('Opening file: $url');
+  void _openFile(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      throw 'Could not launch $url';
+    }
   }
 }
