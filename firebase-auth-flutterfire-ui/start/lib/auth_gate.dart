@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:firebase_ui_auth/firebase_ui_auth.dart';
+import 'package:firebase_ui_oauth_google/firebase_ui_oauth_google.dart';
 import 'package:flutter/material.dart';
 
 import 'home.dart';
@@ -16,6 +17,7 @@ class AuthGate extends StatelessWidget {
          return SignInScreen(
            providers: [
              EmailAuthProvider(),
+             GoogleProvider(clientId: '834336712270-7dkq3tsbii73739v6fksf9vm9mk01vac.apps.googleusercontent.com')
            ],
            headerBuilder: (context, constraints, shrinkOffset) {
              return Padding(
@@ -30,8 +32,8 @@ class AuthGate extends StatelessWidget {
              return Padding(
                padding: const EdgeInsets.symmetric(vertical: 8.0),
                child: action == AuthAction.signIn
-                   ? const Text('Welcome to FlutterFire, please sign in!')
-                   : const Text('Welcome to Flutterfire, please sign up!'),
+                   ? const Text('Welcome to FlutterFire2, please sign in!')
+                   : const Text('Welcome to Flutterfire2, please sign up!'),
              );
            },
           footerBuilder: (context, action) {
