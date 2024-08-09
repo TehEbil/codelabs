@@ -1,8 +1,9 @@
-import 'dart:io';
-
+import 'dart:typed_data';
+import 'dart:io' as io;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -28,38 +29,72 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     _speech = stt.SpeechToText();
   }
 
-  Future<void> _pickAndUploadFile() async {
+  Future<void> _pickAndUploadFile({bool isPhoto = false}) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
-      print(result);
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: isPhoto ? FileType.image : FileType.any,
+      );
 
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
+      if (result != null) {
         String fileName = result.files.single.name;
 
-        // Upload file to Firebase Storage
-        final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
-        UploadTask uploadTask = storageRef.putFile(file);
+        if (kIsWeb) {
+          Uint8List? fileBytes = result.files.single.bytes;
+          if (fileBytes != null) {
+            final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
+            UploadTask uploadTask = storageRef.putData(fileBytes);
 
-        // Wait for the upload to complete
-        TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
+            TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
+            String fileUrl = await taskSnapshot.ref.getDownloadURL();
+            await chatCollection.add({
+              'message': fileUrl,
+              'sender': 'User',
+              'timestamp': FieldValue.serverTimestamp(),
+              'userId': currentUser,
+              'type': isPhoto ? 'image' : 'file',
+            });
+          }
+        } else {
+          String? filePath = result.files.single.path;
+          if (filePath != null) {
+            io.File file = io.File(filePath);
 
-        // Get download URL and send as a message
-        String fileUrl = await taskSnapshot.ref.getDownloadURL();
-        await chatCollection.add({
-          'message': fileUrl,
-          'sender': 'User',
-          'timestamp': FieldValue.serverTimestamp(),
-          'userId': currentUser,
-          'type': 'file', // Indicate this message is a file
-        });
+            final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
+            UploadTask uploadTask = storageRef.putFile(file);
+
+            TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
+            String fileUrl = await taskSnapshot.ref.getDownloadURL();
+            await chatCollection.add({
+              'message': fileUrl,
+              'sender': 'User',
+              'timestamp': FieldValue.serverTimestamp(),
+              'userId': currentUser,
+              'type': isPhoto ? 'image' : 'file',
+            });
+          }
+        }
 
         print('File uploaded successfully');
       } else {
-        print('No file selected or invalid file path');
+        print('No file selected');
       }
     } catch (e) {
       print('Error picking or uploading file: $e');
+    }
+  }
+
+  Future<void> _recordAndSendMessage() async {
+    bool available = await _speech.initialize();
+    if (available) {
+      _speech.listen(onResult: (val) {
+        setState(() {
+          _messageController.text = val.recognizedWords;
+        });
+      });
+      await Future.delayed(const Duration(milliseconds: 200)); // Delay before stopping
+      _speech.stop();
+      _sendMessage();
+      _messageController.clear();
     }
   }
 
@@ -69,12 +104,16 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.attach_file),
-            onPressed: _pickAndUploadFile,
+            icon: const Icon(Icons.photo),
+            onPressed: () => _pickAndUploadFile(isPhoto: true),
           ),
           IconButton(
-            icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-            onPressed: _isListening ? _stopListening : _startListening,
+            icon: const Icon(Icons.attach_file),
+            onPressed: () => _pickAndUploadFile(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.mic),
+            onPressed: _recordAndSendMessage,
           ),
           Expanded(
             child: TextField(
@@ -103,40 +142,22 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         'sender': 'User',
         'timestamp': FieldValue.serverTimestamp(),
         'userId': currentUser,
+        'type': 'text',
       });
 
-      // Simulate AI response
       await Future<void>.delayed(const Duration(seconds: 1));
       await chatCollection.add({
         'message': 'This is an AI response to: ${_messageController.text}',
         'sender': 'AI',
         'timestamp': FieldValue.serverTimestamp(),
         'userId': currentUser,
+        'type': 'text',
       });
 
       _messageController.clear();
     } catch (e) {
       print('Error sending message: $e');
     }
-  }
-
-  Future<void> _startListening() async {
-    bool available = await _speech.initialize(
-      onStatus: (val) => setState(() => _isListening = _speech.isListening),
-      onError: (val) => print('Speech recognition error: $val'),
-    );
-    if (available) {
-      _speech.listen(onResult: (val) {
-        setState(() {
-          _messageController.text = val.recognizedWords;
-        });
-      });
-    }
-  }
-
-  Future<void> _stopListening() async {
-    _speech.stop();
-    setState(() => _isListening = false);
   }
 
   @override
@@ -164,11 +185,11 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                   return const Center(child: Text('No messages yet.'));
                 }
 
+                List<DocumentSnapshot> docs = snapshot.data!.docs;
                 return ListView.builder(
-                  reverse: true,
-                  itemCount: snapshot.data!.docs.length,
+                  itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final doc = snapshot.data!.docs[index];
+                    final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
 
                     final message = data['message'] ?? 'No message';
@@ -178,30 +199,18 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                     final Timestamp? timestamp = data['timestamp'] as Timestamp?;
                     final time = timestamp?.toDate() ?? DateTime.now();
 
-                    return Align(
-                      alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isCurrentUser ? Colors.blueAccent : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              message,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              time.toLocal().toString(),
-                              style: const TextStyle(fontSize: 10, color: Colors.white70),
-                            ),
-                          ],
-                        ),
-                      ),
+                    bool showDateBadge = false;
+                    if (index == 0 ||
+                        (index > 0 && !_isSameDay(docs[index - 1]['timestamp'], timestamp))) {
+                      showDateBadge = true;
+                    }
+
+                    return Column(
+                      crossAxisAlignment: isCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        if (showDateBadge) _buildDateBadge(time),
+                        _buildMessageBubble(message, isCurrentUser, data['type'], time),
+                      ],
                     );
                   },
                 );
@@ -212,5 +221,89 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildMessageBubble(String message, bool isCurrentUser, String type, DateTime time) {
+    return Align(
+      alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isCurrentUser ? Colors.blueAccent : Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (type == 'text') ...[
+              Text(
+                message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ] else if (type == 'image') ...[
+              Image.network(message),
+            ] else ...[
+              InkWell(
+                onTap: () => _openFile(message),
+                child: Row(
+                  children: [
+                    Icon(Icons.insert_drive_file, color: Colors.white),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        'Open File',
+                        style: const TextStyle(color: Colors.white),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 5),
+            Text(
+              time.toLocal().toString(),
+              style: const TextStyle(fontSize: 10, color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateBadge(DateTime date) {
+    String formattedDate;
+    final now = DateTime.now();
+    if (_isSameDay(date, now)) {
+      formattedDate = "Heute";
+    } else if (_isSameDay(date, now.subtract(const Duration(days: 1)))) {
+      formattedDate = "Gestern";
+    } else {
+      formattedDate = '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    }
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(formattedDate),
+      ),
+    );
+  }
+
+  bool _isSameDay(Timestamp? t1, Timestamp? t2) {
+    if (t1 == null || t2 == null) return false;
+    final d1 = t1.toDate();
+    final d2 = t2.toDate();
+    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+  }
+
+  void _openFile(String url) {
+    // Implement logic to open the file URL in a browser or using a file viewer
+    print('Opening file: $url');
   }
 }
