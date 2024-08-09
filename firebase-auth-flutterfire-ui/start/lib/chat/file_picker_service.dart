@@ -19,13 +19,13 @@ class FilePickerService {
           Uint8List? fileBytes = result.files.single.bytes;
           if (fileBytes != null) {
             String fileUrl = await _firebaseService.uploadFile(fileBytes, fileName);
-            await _firebaseService.sendMessage(fileUrl, isPhoto ? 'image' : 'file');
+            await _firebaseService.sendMessage(fileUrl, isPhoto ? 'image' : 'file', 'User');
           }
         } else {
           String? filePath = result.files.single.path;
           if (filePath != null) {
             String fileUrl = await _firebaseService.uploadFileFromPath(filePath, fileName);
-            await _firebaseService.sendMessage(fileUrl, isPhoto ? 'image' : 'file');
+            await _firebaseService.sendMessage(fileUrl, isPhoto ? 'image' : 'file', 'User');
           }
         }
 

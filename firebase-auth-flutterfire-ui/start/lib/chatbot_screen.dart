@@ -6,6 +6,8 @@ import 'chat/chat_message_bubble.dart';
 import 'chat/date_badge.dart';
 import 'chat/firebase_service.dart';
 import 'chat/file_picker_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -19,6 +21,9 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final SpeechService _speechService = SpeechService();
   final FirebaseService _firebaseService = FirebaseService();
   final FilePickerService _filePickerService = FilePickerService();
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+
   bool isListening = false;
 
   Future<void> _recordAndSendMessage() async {
@@ -32,15 +37,21 @@ class ChatbotScreenState extends State<ChatbotScreen> {
           _messageController.text = text;
         });
       });
-      await Future.delayed(const Duration(milliseconds: 200)); // Delay before stopping
-      _speechService.stop();
-      _sendMessage();
-      _messageController.clear();
-      setState(() {
-        isListening = false;
-      });
     }
   }
+
+  void _stopRecording() async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    _speechService.stop();
+    if (_messageController.text.isNotEmpty) {
+      _sendMessage();
+    }
+    setState(() {
+      _messageController.clear();
+      isListening = false;
+    });
+  }
+
 
   Widget _buildInputArea() {
     return Padding(
@@ -55,13 +66,18 @@ class ChatbotScreenState extends State<ChatbotScreen> {
             icon: const Icon(Icons.attach_file),
             onPressed: () => _filePickerService.pickAndUploadFile(),
           ),
-          IconButton(
-            icon: const Icon(Icons.mic),
-            onPressed: _recordAndSendMessage,
+          GestureDetector(
+            onLongPress: _recordAndSendMessage,
+            onLongPressUp: _stopRecording,
+            child: Icon(
+              isListening ? Icons.mic : Icons.mic_none,
+              color: isListening ? Colors.red : null,
+            ),
           ),
           Expanded(
             child: TextField(
               controller: _messageController,
+              focusNode: _focusNode,
               decoration: const InputDecoration(
                 hintText: 'Enter your message',
               ),
@@ -80,15 +96,94 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   Future<void> _sendMessage() async {
     if (_messageController.text.isEmpty) return;
 
+    final userMessage = _messageController.text;
     try {
-      await _firebaseService.sendMessage(_messageController.text, 'text');
+      await _firebaseService.sendMessage(userMessage, 'text', 'User');
       _messageController.clear();
+      _focusNode.requestFocus();
+      _scrollToBottom();
 
       await Future<void>.delayed(const Duration(seconds: 1));
-      await _firebaseService.sendMessage(
-          'This is an AI response to: ${_messageController.text}', 'text');
+      if (!mounted) return;
+
+      // Fetch the Gemini response
+      String aiMessage = await fetchGeminiResponse(userMessage);
+      await _firebaseService.sendMessage(aiMessage, 'text', 'AI');
     } catch (e) {
+      if (!mounted) return;
       print('Error sending message: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending message: $e')),
+      );
+    }
+
+    _scrollToBottom();
+  }
+
+  Future<String> fetchGeminiResponse(String userMessage) async {
+    // Simulate a delay for the API response
+    await Future.delayed(const Duration(seconds: 1));
+    // You can replace this with actual API call logic
+    return 'Gemini response to: $userMessage';
+  }
+
+  Future<String> fetchGeminiResponseNew(String userMessage) async {
+    final response = await http.post(
+      Uri.parse('https://gemini-api-url.com/generate-response'),
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_KEY',
+      },
+      body: jsonEncode(<String, String>{
+        'message': userMessage,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['response']; // Adjust based on the actual response structure
+    } else {
+      throw Exception('Failed to load Gemini response');
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
+  }
+
+  bool _isSameDay(Timestamp? t1, Timestamp? t2) {
+    if (t1 == null || t2 == null) return false;
+    final d1 = t1.toDate();
+    final d2 = t2.toDate();
+    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
+  }
+
+  void _openFile(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        print('Could not launch $url');
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open file: $url')),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      print('Error launching URL: $e');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening file: $e')),
+        );
+      }
     }
   }
 
@@ -119,6 +214,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
 
                 List<DocumentSnapshot> docs = snapshot.data!.docs;
                 return ListView.builder(
+                  controller: _scrollController,
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final doc = docs[index];
@@ -148,7 +244,8 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                           isCurrentUser: isCurrentUser,
                           type: data['type'],
                           time: time,
-                          onFileTap: _openFile,
+                          sender: data['sender'],
+                          onFileTap: (url) => _openFile(context, url),
                         ),
                       ],
                     );
@@ -161,21 +258,5 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         ],
       ),
     );
-  }
-
-  bool _isSameDay(Timestamp? t1, Timestamp? t2) {
-    if (t1 == null || t2 == null) return false;
-    final d1 = t1.toDate();
-    final d2 = t2.toDate();
-    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-  }
-
-  void _openFile(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      throw 'Could not launch $url';
-    }
   }
 }

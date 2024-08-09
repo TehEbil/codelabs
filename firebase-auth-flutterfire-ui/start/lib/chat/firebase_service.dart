@@ -9,15 +9,16 @@ class FirebaseService {
       FirebaseFirestore.instance.collection('chats');
   final String currentUser = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
 
-  Future<void> sendMessage(String message, String type) async {
+  Future<void> sendMessage(String message, String type, String sender) async {
     await chatCollection.add({
       'message': message,
-      'sender': 'User',
+      'sender': sender,
       'timestamp': FieldValue.serverTimestamp(),
       'userId': currentUser,
       'type': type,
     });
   }
+
 
   Future<String> uploadFile(Uint8List fileBytes, String fileName) async {
     final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
