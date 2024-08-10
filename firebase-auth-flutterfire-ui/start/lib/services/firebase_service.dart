@@ -71,7 +71,7 @@ class FirebaseService {
   }
 
   Future<String> generateTitleFromMessage(String message) async {
-    const apiKey = 'AIzaSyAB_Dxfpf2YmxxJqZmP9m2kyFOXPOOONSo';
+    const apiKey = 'AIzaSyCXJofOQF5duPyq8kNSTQ--4dbRRAKP4do';
 
     final model = GenerativeModel(
         model: 'gemini-1.5-flash-latest',

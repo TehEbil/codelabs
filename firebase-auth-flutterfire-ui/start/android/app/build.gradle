@@ -8,6 +8,11 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+dependencies {
+  implementation 'androidx.multidex:multidex:2.0.1'
+}
+
+
 android {
     namespace = "com.cycrosoft.spiritualwelfare"
     compileSdk = flutter.compileSdkVersion
@@ -32,6 +37,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        multiDexEnabled true
+
     }
 
     buildTypes {

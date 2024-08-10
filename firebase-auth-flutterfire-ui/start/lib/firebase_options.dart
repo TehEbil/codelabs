@@ -64,8 +64,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '834336712270',
     projectId: 'spiritualwelfare',
     storageBucket: 'spiritualwelfare.appspot.com',
-    iosClientId: '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
-    iosBundleId: 'com.example.start',
+    iosClientId:
+        '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
+    iosBundleId: 'com.cycrosoft.spiritualwelfare',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -74,8 +75,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '834336712270',
     projectId: 'spiritualwelfare',
     storageBucket: 'spiritualwelfare.appspot.com',
-    iosClientId: '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
-    iosBundleId: 'com.example.start',
+    iosClientId:
+        '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
+    iosBundleId: 'com.cycrosoft.spiritualwelfare',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
@@ -87,5 +89,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'spiritualwelfare.appspot.com',
     measurementId: 'G-TQFN0XQYF3',
   );
-
 }

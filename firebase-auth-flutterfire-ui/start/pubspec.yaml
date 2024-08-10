@@ -1,7 +1,7 @@
-name: start
-description: "A new Flutter project."
+name: spiritual_welfare
+description: App for healthy spiritual welfare
 publish_to: "none"
-version: 0.1.0
+version: 1.0.0+1
 
 environment:
   sdk: ^3.5.0-0
@@ -27,6 +27,7 @@ dependencies:
   url_launcher: ^6.3.0
   intl: ^0.19.0
   http: ^1.2.2
+  cupertino_icons: ^1.0.0
 
 dev_dependencies:
   flutter_test:
