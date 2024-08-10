@@ -32,10 +32,20 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       setState(() {
         isListening = true;
       });
+
+      String lastRecognizedText = '';
+
       _speechService.listen(onResult: (text) {
-        setState(() {
+        // Only update the controller if the recognized text changes
+        if (lastRecognizedText != text) {
+          lastRecognizedText = text;
           _messageController.text = text;
-        });
+
+          // Move the cursor to the end of the text
+          _messageController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _messageController.text.length),
+          );
+        }
       });
     }
   }
@@ -53,45 +63,53 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   }
 
 
-  Widget _buildInputArea() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.photo),
-            onPressed: () => _filePickerService.pickAndUploadFile(isPhoto: true),
+Widget _buildInputArea() {
+  return Padding(
+    padding: const EdgeInsets.all(8.0),
+    child: Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.photo),
+          onPressed: () => _filePickerService.pickAndUploadFile(isPhoto: true),
+        ),
+        IconButton(
+          icon: const Icon(Icons.attach_file),
+          onPressed: () => _filePickerService.pickAndUploadFile(),
+        ),
+        GestureDetector(
+          onLongPressStart: (_) async {
+            if (!isListening) {
+              await _recordAndSendMessage();
+            }
+          },
+          onLongPressEnd: (_) {
+            if (isListening) {
+              _stopRecording();
+            }
+          },
+          child: Icon(
+            isListening ? Icons.mic : Icons.mic_none,
+            color: isListening ? Colors.red : null,
           ),
-          IconButton(
-            icon: const Icon(Icons.attach_file),
-            onPressed: () => _filePickerService.pickAndUploadFile(),
-          ),
-          GestureDetector(
-            onLongPress: _recordAndSendMessage,
-            onLongPressUp: _stopRecording,
-            child: Icon(
-              isListening ? Icons.mic : Icons.mic_none,
-              color: isListening ? Colors.red : null,
+        ),
+        Expanded(
+          child: TextField(
+            controller: _messageController,
+            focusNode: _focusNode,
+            decoration: const InputDecoration(
+              hintText: 'Enter your message',
             ),
+            onSubmitted: (_) => _sendMessage(),
           ),
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              focusNode: _focusNode,
-              decoration: const InputDecoration(
-                hintText: 'Enter your message',
-              ),
-              onSubmitted: (_) => _sendMessage(),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: _sendMessage,
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+        IconButton(
+          icon: const Icon(Icons.send),
+          onPressed: _sendMessage,
+        ),
+      ],
+    ),
+  );
+}
 
   Future<void> _sendMessage() async {
     if (_messageController.text.isEmpty) return;
