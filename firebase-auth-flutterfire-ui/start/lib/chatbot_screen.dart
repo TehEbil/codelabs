@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'chat/speech_service.dart';
-// import 'chat/chat_message_bubble.dart';
 import 'chat/date_badge.dart';
 import 'chat/firebase_service.dart';
 import 'chat/file_picker_service.dart';
-import 'package:intl/intl.dart';
-// Import the necessary packages for Gemini
+import 'package:intl/intl.dart'; // Make sure this is imported
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatbotScreen extends StatefulWidget {
-  const ChatbotScreen({super.key});
+  final String? chatId; // Add chatId parameter for existing chat
+
+  const ChatbotScreen({super.key, this.chatId}); // Update constructor
 
   @override
   ChatbotScreenState createState() => ChatbotScreenState();
@@ -26,14 +26,13 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
 
-  // Initialize Gemini models
-  late final gG _model;
-  // late final GenerativeModel _visionModel;
+  late final GenerativeModel _model;
   late final ChatSession _chat;
-  // String? _file;
 
   bool isListening = false;
   final ValueNotifier<bool> isListeningNotifier = ValueNotifier<bool>(false);
+
+  late Future<String> chatIdFuture;
 
   @override
   void initState() {
@@ -50,12 +49,44 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       apiKey: apiKey,
     );
 
-    // _visionModel = GenerativeModel(
-    //   model: 'gemini-pro-vision',
-    //   apiKey: apiKey,
-    // );
+    chatIdFuture = _initializeChat();
+  }
 
-    _chat = _model.startChat();
+  Future<String> _initializeChat() async {
+    try {
+      String chatId;
+
+      if (widget.chatId != null) {
+        // Use the existing chat ID
+        chatId = widget.chatId!;
+      } else {
+        // Create a new chat and get its ID with title based on first message
+        DocumentReference newChat = await _firebaseService
+            .createNewChatWithTitle('Start a new conversation...');
+        chatId = newChat.id;
+      }
+
+      // Load chat history for the existing chat
+      QuerySnapshot messagesSnapshot = await _firebaseService.chatCollection
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: false)
+          .get();
+
+      List<Content> history = [];
+      for (var messageDoc in messagesSnapshot.docs) {
+        var messageData = messageDoc.data() as Map<String, dynamic>;
+        history.add(Content.text(messageData['message'] ?? ''));
+      }
+
+      // Start a new chat session with or without history
+      _chat = _model.startChat(history: history);
+
+      return chatId;
+    } catch (e) {
+      print('Error initializing chat: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -70,20 +101,8 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   Future<String> fetchGeminiResponse(String text) async {
     try {
       late final GenerateContentResponse response;
-      // if (_file != null) {
-      //   final firstImage = await File(_file!).readAsBytes();
-      //   final prompt = TextPart(text);
-      //   final imageParts = [
-      //     DataPart('image/jpeg', firstImage),
-      //   ];
-      //   response = await _visionModel.generateContent([
-      //     Content.multi([prompt, ...imageParts])
-      //   ]);
-      //   _file = null;
-      // } else {
       var content = Content.text(text.toString());
       response = await _chat.sendMessage(content);
-      // }
       return response.text ?? '';
     } catch (e) {
       print('Error fetching Gemini response: $e');
@@ -94,8 +113,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   Future<void> _recordAndSendMessage() async {
     bool available = await _speechService.initialize();
     if (available) {
-      isListeningNotifier.value = true; // Update the ValueNotifier
-
+      isListeningNotifier.value = true;
       String lastRecognizedText = '';
 
       _speechService.listen(onResult: (text) {
@@ -110,29 +128,30 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  void _stopRecording() async {
+  void _stopRecording(String chatId) async {
     await Future.delayed(const Duration(milliseconds: 200));
     _speechService.stop();
     if (_messageController.text.isNotEmpty) {
-      _sendMessage();
+      _sendMessage(chatId);
     }
     _messageController.clear();
-    isListeningNotifier.value = false; // Update the ValueNotifier
+    isListeningNotifier.value = false;
   }
 
-  Widget _buildInputArea() {
+  Widget _buildInputArea(String chatId) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
         children: [
           IconButton(
             icon: const Icon(Icons.photo),
-            onPressed: () =>
-                _filePickerService.pickAndUploadFile(isPhoto: true),
+            onPressed: () => _filePickerService.pickAndUploadFile(chatId,
+                isPhoto: true), // Pass chatId
           ),
           IconButton(
             icon: const Icon(Icons.attach_file),
-            onPressed: () => _filePickerService.pickAndUploadFile(),
+            onPressed: () =>
+                _filePickerService.pickAndUploadFile(chatId), // Pass chatId
           ),
           ValueListenableBuilder<bool>(
             valueListenable: isListeningNotifier,
@@ -145,7 +164,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                 },
                 onLongPressEnd: (_) {
                   if (isListening) {
-                    _stopRecording();
+                    _stopRecording(chatId);
                   }
                 },
                 child: Icon(
@@ -162,34 +181,32 @@ class ChatbotScreenState extends State<ChatbotScreen> {
               decoration: const InputDecoration(
                 hintText: 'Enter your message',
               ),
-              onSubmitted: (_) => _sendMessage(),
+              onSubmitted: (_) => _sendMessage(chatId),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.send),
-            onPressed: _sendMessage,
+            onPressed: () => _sendMessage(chatId),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage(String chatId) async {
     if (_messageController.text.isEmpty) return;
 
     final userMessage = _messageController.text;
     try {
-      await _firebaseService.sendMessage(userMessage, 'text', 'User');
+      // Send the user's message
+      await _firebaseService.sendMessage(chatId, userMessage, 'text', 'User');
       _messageController.clear();
       _focusNode.requestFocus();
       _scrollToBottom();
 
-      // await Future<void>.delayed(const Duration(seconds: 1));
-      // if (!mounted) return;
-
-      // // Fetch the Gemini response
+      // Fetch AI's response and send it
       String aiMessage = await fetchGeminiResponse(userMessage);
-      await _firebaseService.sendMessage(aiMessage, 'text', 'AI');
+      await _firebaseService.sendMessage(chatId, aiMessage, 'text', 'AI');
     } catch (e) {
       if (!mounted) return;
       print('Error sending message: $e');
@@ -249,166 +266,181 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       appBar: AppBar(
         title: const Text('Chatbot'),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _firebaseService.chatCollection
-                  .where('userId', isEqualTo: _firebaseService.currentUser)
-                  .orderBy('timestamp', descending: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('No messages yet.'));
-                }
+      body: FutureBuilder<String>(
+        future: chatIdFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
 
-                List<DocumentSnapshot> docs = snapshot.data!.docs;
+          final chatId = snapshot.data!;
 
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToBottom();
-                });
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-
-                    final message = data['message'] ?? 'No message';
-                    final sender = data['sender'] ?? 'Unknown sender';
-                    final isCurrentUser = sender == 'User';
-                    final type = data['type'] ?? 'text';
-
-                    final Timestamp? timestamp =
-                        data['timestamp'] as Timestamp?;
-                    final time = timestamp?.toDate() ?? DateTime.now();
-
-                    bool showDateBadge = false;
-                    if (index == 0 ||
-                        (index > 0 &&
-                            !_isSameDay(
-                                docs[index - 1]['timestamp'], timestamp))) {
-                      showDateBadge = true;
+          return Column(
+            children: [
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _firebaseService.chatCollection
+                      .doc(chatId)
+                      .collection('messages')
+                      .orderBy('timestamp', descending: false)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const Center(child: Text('No messages yet.'));
                     }
 
-                    return Column(
-                      crossAxisAlignment: isCurrentUser
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
-                      children: [
-                        if (showDateBadge) DateBadge(timestamp: timestamp),
-                        Container(
-                          padding: const EdgeInsets.only(
-                              left: 14, right: 14, top: 10, bottom: 10),
-                          child: Align(
-                            alignment: (isCurrentUser
-                                ? Alignment.topRight
-                                : Alignment.topLeft),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withOpacity(0.3),
-                                    spreadRadius: 1,
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                                color: (isCurrentUser
-                                    ? const Color(0xFF8EC6C5)
-                                    : const Color(0xFFD9EAD3)),
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              child: type == 'image'
-                                  ? InkWell(
-                                      onTap: () => _openFile(
-                                          message), // Use the passed callback to open the image
-                                      child: Image.network(
-                                        message,
-                                        width: 100,
-                                        errorBuilder:
-                                            (context, error, stackTrace) {
-                                          return const Icon(Icons.broken_image,
-                                              color: Colors.black54);
-                                        },
+                    List<DocumentSnapshot> docs = snapshot.data!.docs;
+
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _scrollToBottom();
+                    });
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final doc = docs[index];
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final message = data['message'] ?? 'No message';
+                        final sender = data['sender'] ?? 'Unknown sender';
+                        final isCurrentUser = sender == 'User';
+                        final type = data['type'] ?? 'text';
+
+                        final Timestamp? timestamp =
+                            data['timestamp'] as Timestamp?;
+                        final time = timestamp?.toDate() ?? DateTime.now();
+
+                        bool showDateBadge = false;
+                        if (index == 0 ||
+                            (index > 0 &&
+                                !_isSameDay(
+                                    docs[index - 1]['timestamp'], timestamp))) {
+                          showDateBadge = true;
+                        }
+
+                        return Column(
+                          crossAxisAlignment: isCurrentUser
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            if (showDateBadge) DateBadge(timestamp: timestamp),
+                            Container(
+                              padding: const EdgeInsets.only(
+                                  left: 14, right: 14, top: 10, bottom: 10),
+                              child: Align(
+                                alignment: (isCurrentUser
+                                    ? Alignment.topRight
+                                    : Alignment.topLeft),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.3),
+                                        spreadRadius: 1,
+                                        blurRadius: 5,
+                                        offset: const Offset(0, 3),
                                       ),
-                                    )
-                                  : type == 'text'
-                                      ? isCurrentUser
-                                          ? Text(
-                                              message,
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                color: isCurrentUser
-                                                    ? Colors.white
-                                                    : Colors.black54,
-                                              ),
-                                            )
-                                          : MarkdownBody(
-                                              data: message,
-                                              styleSheet: MarkdownStyleSheet(
-                                                p: TextStyle(
-                                                  fontSize: 15,
-                                                  color: isCurrentUser
-                                                      ? Colors.white
-                                                      : Colors.black54,
-                                                ),
-                                              ),
-                                            )
-                                      : InkWell(
-                                          onTap: () => _openFile(
-                                              message), // Use the passed callback
-                                          child: Row(
-                                            children: [
-                                              const Icon(
-                                                  Icons.insert_drive_file,
-                                                  color: Colors.black54),
-                                              const SizedBox(width: 5),
-                                              Flexible(
-                                                child: Text(
-                                                  'Open File',
+                                    ],
+                                    color: (isCurrentUser
+                                        ? const Color(0xFF8EC6C5)
+                                        : const Color(0xFFD9EAD3)),
+                                  ),
+                                  padding: const EdgeInsets.all(16),
+                                  child: type == 'image'
+                                      ? InkWell(
+                                          onTap: () => _openFile(message),
+                                          child: Image.network(
+                                            message,
+                                            width: 100,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              return const Icon(
+                                                  Icons.broken_image,
+                                                  color: Colors.black54);
+                                            },
+                                          ),
+                                        )
+                                      : type == 'text'
+                                          ? isCurrentUser
+                                              ? Text(
+                                                  message,
                                                   style: TextStyle(
                                                     fontSize: 15,
                                                     color: isCurrentUser
                                                         ? Colors.white
                                                         : Colors.black54,
                                                   ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
+                                                )
+                                              : MarkdownBody(
+                                                  data: message,
+                                                  styleSheet:
+                                                      MarkdownStyleSheet(
+                                                    p: TextStyle(
+                                                      fontSize: 15,
+                                                      color: isCurrentUser
+                                                          ? Colors.white
+                                                          : Colors.black54,
+                                                    ),
+                                                  ),
+                                                )
+                                          : InkWell(
+                                              onTap: () => _openFile(message),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                      Icons.insert_drive_file,
+                                                      color: Colors.black54),
+                                                  const SizedBox(width: 5),
+                                                  Flexible(
+                                                    child: Text(
+                                                      'Open File',
+                                                      style: TextStyle(
+                                                        fontSize: 15,
+                                                        color: isCurrentUser
+                                                            ? Colors.white
+                                                            : Colors.black54,
+                                                      ),
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                        ),
+                                            ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16.0, vertical: 5.0),
-                          child: Text(
-                            DateFormat('HH:mm').format(time),
-                            style: const TextStyle(
-                                fontSize: 10, color: Colors.black54),
-                          ),
-                        ),
-                      ],
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 5.0),
+                              child: Text(
+                                DateFormat('HH:mm').format(time),
+                                style: const TextStyle(
+                                    fontSize: 10, color: Colors.black54),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ),
-          _buildInputArea(),
-        ],
+                ),
+              ),
+              _buildInputArea(chatId),
+            ],
+          );
+        },
       ),
     );
   }
