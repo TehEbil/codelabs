@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io' as io;
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart'; // Import Gemini API
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 class FirebaseService {
   final CollectionReference chatCollection =
@@ -13,11 +13,10 @@ class FirebaseService {
 
   Future<DocumentReference> createEmptyChat() async {
     try {
-      // Create an empty chat without a title
       DocumentReference newChat = await chatCollection.add({
         'userId': currentUser,
         'timestamp': FieldValue.serverTimestamp(),
-        'title': '', // No title initially
+        'title': '',
       });
       return newChat;
     } catch (e) {
@@ -29,7 +28,7 @@ class FirebaseService {
   Future<void> updateChatTitle(String chatId, String title) async {
     try {
       await chatCollection.doc(chatId).update({
-        'title': title, // Set the title
+        'title': title,
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {

@@ -3,7 +3,7 @@ import 'package:firebase_ui_auth/firebase_ui_auth.dart';
 import 'package:firebase_ui_oauth_google/firebase_ui_oauth_google.dart';
 import 'package:flutter/material.dart';
 
-import 'home.dart';
+import 'home_screen.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -33,9 +33,9 @@ class AuthGate extends StatelessWidget {
             subtitleBuilder: (context, action) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: action == AuthAction.signIn
-                    ? const Text('Welcome to FlutterFire2, please sign in!')
-                    : const Text('Welcome to Flutterfire2, please sign up!'),
+                child: Text(action == AuthAction.signIn
+                    ? 'Welcome to FlutterFire2, please sign in!'
+                    : 'Welcome to Flutterfire2, please sign up!'),
               );
             },
             footerBuilder: (context, action) {

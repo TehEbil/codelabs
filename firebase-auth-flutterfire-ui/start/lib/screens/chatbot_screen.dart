@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'chat/speech_service.dart';
-import 'chat/date_badge.dart';
-import 'chat/firebase_service.dart';
-import 'chat/file_picker_service.dart';
-import 'package:intl/intl.dart'; // Make sure this is imported
+import '../services/speech_service.dart';
+import '../services/firebase_service.dart';
+import '../services/file_picker_service.dart';
+import '../widgets/date_badge.dart';
+import 'package:intl/intl.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
