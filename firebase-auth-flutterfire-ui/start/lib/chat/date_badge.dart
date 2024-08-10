@@ -15,7 +15,8 @@ class DateBadge extends StatelessWidget {
     final now = DateTime.now();
     if (_isSameDay(timestamp, Timestamp.fromDate(now))) {
       formattedDate = "Heute";
-    } else if (_isSameDay(timestamp, Timestamp.fromDate(now.subtract(const Duration(days: 1))))) {
+    } else if (_isSameDay(
+        timestamp, Timestamp.fromDate(now.subtract(const Duration(days: 1))))) {
       formattedDate = "Gestern";
     } else {
       formattedDate =

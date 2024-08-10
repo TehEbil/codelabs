@@ -25,23 +25,28 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final FocusNode _focusNode = FocusNode();
 
   bool isListening = false;
+  final ValueNotifier<bool> isListeningNotifier = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _focusNode.dispose();
+    isListeningNotifier.dispose();
+    super.dispose();
+  }
 
   Future<void> _recordAndSendMessage() async {
     bool available = await _speechService.initialize();
     if (available) {
-      setState(() {
-        isListening = true;
-      });
+      isListeningNotifier.value = true; // Update the ValueNotifier
 
       String lastRecognizedText = '';
 
       _speechService.listen(onResult: (text) {
-        // Only update the controller if the recognized text changes
         if (lastRecognizedText != text) {
           lastRecognizedText = text;
           _messageController.text = text;
-
-          // Move the cursor to the end of the text
           _messageController.selection = TextSelection.fromPosition(
             TextPosition(offset: _messageController.text.length),
           );
@@ -56,60 +61,63 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     if (_messageController.text.isNotEmpty) {
       _sendMessage();
     }
-    setState(() {
-      _messageController.clear();
-      isListening = false;
-    });
+    _messageController.clear();
+    isListeningNotifier.value = false; // Update the ValueNotifier
   }
 
-
-Widget _buildInputArea() {
-  return Padding(
-    padding: const EdgeInsets.all(8.0),
-    child: Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.photo),
-          onPressed: () => _filePickerService.pickAndUploadFile(isPhoto: true),
-        ),
-        IconButton(
-          icon: const Icon(Icons.attach_file),
-          onPressed: () => _filePickerService.pickAndUploadFile(),
-        ),
-        GestureDetector(
-          onLongPressStart: (_) async {
-            if (!isListening) {
-              await _recordAndSendMessage();
-            }
-          },
-          onLongPressEnd: (_) {
-            if (isListening) {
-              _stopRecording();
-            }
-          },
-          child: Icon(
-            isListening ? Icons.mic : Icons.mic_none,
-            color: isListening ? Colors.red : null,
+  Widget _buildInputArea() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.photo),
+            onPressed: () =>
+                _filePickerService.pickAndUploadFile(isPhoto: true),
           ),
-        ),
-        Expanded(
-          child: TextField(
-            controller: _messageController,
-            focusNode: _focusNode,
-            decoration: const InputDecoration(
-              hintText: 'Enter your message',
+          IconButton(
+            icon: const Icon(Icons.attach_file),
+            onPressed: () => _filePickerService.pickAndUploadFile(),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: isListeningNotifier,
+            builder: (context, isListening, child) {
+              return GestureDetector(
+                onLongPressStart: (_) async {
+                  if (!isListening) {
+                    await _recordAndSendMessage();
+                  }
+                },
+                onLongPressEnd: (_) {
+                  if (isListening) {
+                    _stopRecording();
+                  }
+                },
+                child: Icon(
+                  isListening ? Icons.mic : Icons.mic_none,
+                  color: isListening ? Colors.red : null,
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              focusNode: _focusNode,
+              decoration: const InputDecoration(
+                hintText: 'Enter your message',
+              ),
+              onSubmitted: (_) => _sendMessage(),
             ),
-            onSubmitted: (_) => _sendMessage(),
           ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.send),
-          onPressed: _sendMessage,
-        ),
-      ],
-    ),
-  );
-}
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: _sendMessage,
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _sendMessage() async {
     if (_messageController.text.isEmpty) return;
@@ -242,12 +250,15 @@ Widget _buildInputArea() {
                     final sender = data['sender'] ?? 'Unknown sender';
                     final isCurrentUser = sender == 'User';
 
-                    final Timestamp? timestamp = data['timestamp'] as Timestamp?;
+                    final Timestamp? timestamp =
+                        data['timestamp'] as Timestamp?;
                     final time = timestamp?.toDate() ?? DateTime.now();
 
                     bool showDateBadge = false;
                     if (index == 0 ||
-                        (index > 0 && !_isSameDay(docs[index - 1]['timestamp'], timestamp))) {
+                        (index > 0 &&
+                            !_isSameDay(
+                                docs[index - 1]['timestamp'], timestamp))) {
                       showDateBadge = true;
                     }
 

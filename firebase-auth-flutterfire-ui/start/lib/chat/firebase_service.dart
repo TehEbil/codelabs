@@ -7,7 +7,8 @@ import 'dart:typed_data';
 class FirebaseService {
   final CollectionReference chatCollection =
       FirebaseFirestore.instance.collection('chats');
-  final String currentUser = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
+  final String currentUser =
+      FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
 
   Future<void> sendMessage(String message, String type, String sender) async {
     await chatCollection.add({
@@ -19,9 +20,9 @@ class FirebaseService {
     });
   }
 
-
   Future<String> uploadFile(Uint8List fileBytes, String fileName) async {
-    final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
+    final storageRef =
+        FirebaseStorage.instance.ref().child('uploads/$fileName');
     UploadTask uploadTask = storageRef.putData(fileBytes);
 
     TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});
@@ -31,7 +32,8 @@ class FirebaseService {
   Future<String> uploadFileFromPath(String filePath, String fileName) async {
     io.File file = io.File(filePath);
 
-    final storageRef = FirebaseStorage.instance.ref().child('uploads/$fileName');
+    final storageRef =
+        FirebaseStorage.instance.ref().child('uploads/$fileName');
     UploadTask uploadTask = storageRef.putFile(file);
 
     TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => {});

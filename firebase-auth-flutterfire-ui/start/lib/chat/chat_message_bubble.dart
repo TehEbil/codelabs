@@ -52,24 +52,26 @@ class ChatMessageBubble extends StatelessWidget {
                 style: TextStyle(color: textColor),
               ),
             ] else if (type == 'image') ...[
-Image.network(
-  message,
-  fit: BoxFit.cover,
-  loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
-    if (loadingProgress == null) return child;
-    return Center(
-      child: CircularProgressIndicator(
-        value: loadingProgress.expectedTotalBytes != null
-            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-            : null,
-      ),
-    );
-  },
-  errorBuilder: (context, error, stackTrace) {
-    return const Icon(Icons.broken_image, color: Colors.red);
-  },
-  // headers: {'Authorization': 'Bearer YOUR_ACCESS_TOKEN'}, // Add authorization if required
-)
+              Image.network(
+                message,
+                fit: BoxFit.cover,
+                loadingBuilder: (BuildContext context, Widget child,
+                    ImageChunkEvent? loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(Icons.broken_image, color: Colors.red);
+                },
+                // headers: {'Authorization': 'Bearer YOUR_ACCESS_TOKEN'}, // Add authorization if required
+              )
             ] else ...[
               InkWell(
                 onTap: () => onFileTap(message), // Use the passed callback

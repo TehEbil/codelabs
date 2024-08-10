@@ -12,7 +12,8 @@ class MyApp extends StatelessWidget {
       ),
       home: const AuthGate(),
       routes: {
-        '/chatbot': (context) => const ChatbotScreen(), // Ensure this route is correct
+        '/chatbot': (context) =>
+            const ChatbotScreen(), // Ensure this route is correct
       },
     );
   }
