@@ -1,10 +1,9 @@
-// In screens/home_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_ui_auth/firebase_ui_auth.dart';
 import 'category_screen.dart';
 import 'talk_to_ai_screen.dart'; // Import the new screen
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +16,34 @@ class HomeScreenState extends State<HomeScreen> {
   String searchQuery = '';
 
   User? _user;
+
+  // Avatar options for the random selection
+  final List<String> avatarOptions = [
+    'assets/wolf.png',
+    'assets/dash.png',
+    'assets/fox-male.png',
+    'assets/fox-female.png',
+    'assets/lion.png',
+    // Add more cartoon images as needed
+  ];
+
+  // Method to get a random avatar image path
+  String getRandomAvatar() {
+    final random = Random();
+    return avatarOptions[random.nextInt(avatarOptions.length)];
+  }
+
+  // Method to get the display name or 'Anonymous' if empty
+  String getDisplayName(User? user) {
+    if (user == null) {
+      return 'Anonymous';
+    }
+    final displayName = user.displayName;
+    if (displayName == null || displayName.trim().isEmpty) {
+      return 'Anonymous';
+    }
+    return displayName;
+  }
 
   @override
   void initState() {
@@ -32,14 +59,14 @@ class HomeScreenState extends State<HomeScreen> {
           title: const Text('Emergency Contacts'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: const [
               ListTile(
-                title: const Text('Nummer gegen Kummer for Youths'),
-                subtitle: const Text('Tel. 116 111'),
+                title: Text('Nummer gegen Kummer for Youths'),
+                subtitle: Text('Tel. 116 111'),
               ),
               ListTile(
-                title: const Text('Nummer gegen Kummer for Parents'),
-                subtitle: const Text('Tel. 0800 11 10 550'),
+                title: Text('Nummer gegen Kummer for Parents'),
+                subtitle: Text('Tel. 0800 11 10 550'),
               ),
             ],
           ),
@@ -83,7 +110,7 @@ class HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.all(2),
                         child: AspectRatio(
                           aspectRatio: 1,
-                          child: Image.asset('flutterfire_300x.png'),
+                          child: Image.asset('assets/flutterfire_300x.png'),
                         ),
                       ),
                     ],
@@ -97,17 +124,17 @@ class HomeScreenState extends State<HomeScreen> {
       ),
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center, // Center vertically
           children: [
             CircleAvatar(
               radius: 50,
               backgroundImage: _user?.photoURL != null
                   ? NetworkImage(_user!.photoURL!)
-                  : const AssetImage('dash.png') as ImageProvider,
+                  : AssetImage(getRandomAvatar()) as ImageProvider,
             ),
             const SizedBox(height: 10),
             Text(
-              'Welcome back, ${_user?.displayName ?? 'User'}!',
+              'Welcome back, ${getDisplayName(_user)}!',
               style: Theme.of(context).textTheme.displaySmall,
             ),
             const SizedBox(height: 20),
