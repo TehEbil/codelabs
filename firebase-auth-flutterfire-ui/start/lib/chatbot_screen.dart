@@ -27,7 +27,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final FocusNode _focusNode = FocusNode();
 
   // Initialize Gemini models
-  late final GenerativeModel _model;
+  late final gG _model;
   // late final GenerativeModel _visionModel;
   late final ChatSession _chat;
   // String? _file;
@@ -41,8 +41,12 @@ class ChatbotScreenState extends State<ChatbotScreen> {
 
     const apiKey = 'AIzaSyAB_Dxfpf2YmxxJqZmP9m2kyFOXPOOONSo';
 
+    const systemInstruction =
+        'Du bist ein einfühlsamer und verständnisvoller Chatbot, der als erfahrener Psychologe und Therapeut agiert. Deine Aufgabe ist es, den Nutzern bei einer Vielzahl von persönlichen und emotionalen Herausforderungen zu helfen. Deine Antworten sollten stets respektvoll, unterstützend und informativ sein. Dein Ziel ist es, den Nutzern zu helfen, ihre Gedanken und Gefühle besser zu verstehen und mögliche Lösungsansätze oder Bewältigungsstrategien aufzuzeigen. Du solltest auf folgende Themen eingehen können:\n\n1) Depressionen: Biete Unterstützung und Informationen zu Symptomen, Bewältigungsstrategien und Ermutigung, professionelle Hilfe in Anspruch zu nehmen.\n\n2) Selbstmordgedanken: Reagiere sofort mit Mitgefühl und Dringlichkeit, und ermutige den Nutzer, sich an Notdienste oder Fachkräfte zu wenden. Betone, dass Hilfe verfügbar ist.\n\n3) Sexuelle Orientierung und Identität (homo- oder bisexuelle Probleme, Transgender): Sei respektvoll und unterstützend, fördere Akzeptanz und Selbstannahme und biete Informationen über relevante Ressourcen und Gemeinschaften.\n\n4) Sexueller Missbrauch: Handle mit äußerster Sensibilität, biete Informationen über Unterstützungsangebote und ermutige die betroffene Person, sich an Fachleute oder Hilfsorganisationen zu wenden.\n\n5) Beziehungsprobleme (Ehe, Paarbeziehungen, Freundschaften): Biete Ratschläge zu Kommunikation, Konfliktlösung und Beziehungsstärkung, und fördere das Verständnis für die Perspektiven aller Beteiligten.\n\nAchte darauf, stets die Grenzen deiner Rolle als Chatbot zu erkennen und ermutige die Nutzer, professionelle Hilfe in Anspruch zu nehmen, wenn es nötig ist. Sei eine Quelle des Mitgefühls und der Unterstützung, und respektiere die Privatsphäre und Vertraulichkeit der Nutzer.';
+
     _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
+      systemInstruction: Content.system(systemInstruction),
       apiKey: apiKey,
     );
 
@@ -198,9 +202,11 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
   }
 
   bool _isSameDay(Timestamp? t1, Timestamp? t2) {
@@ -263,6 +269,11 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                 }
 
                 List<DocumentSnapshot> docs = snapshot.data!.docs;
+
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToBottom();
+                });
+
                 return ListView.builder(
                   controller: _scrollController,
                   itemCount: docs.length,
@@ -305,26 +316,30 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.grey.withOpacity(0.5),
-                                    spreadRadius: 2,
+                                    color: Colors.grey.withOpacity(0.3),
+                                    spreadRadius: 1,
                                     blurRadius: 5,
                                     offset: const Offset(0, 3),
                                   ),
                                 ],
                                 color: (isCurrentUser
-                                    ? const Color(0xFFF69170)
-                                    : Colors.white),
+                                    ? const Color(0xFF8EC6C5)
+                                    : const Color(0xFFD9EAD3)),
                               ),
                               padding: const EdgeInsets.all(16),
                               child: type == 'image'
-                                  ? Image.network(
-                                      message,
-                                      width: 200,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                        return const Icon(Icons.broken_image,
-                                            color: Colors.red);
-                                      },
+                                  ? InkWell(
+                                      onTap: () => _openFile(
+                                          message), // Use the passed callback to open the image
+                                      child: Image.network(
+                                        message,
+                                        width: 100,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                          return const Icon(Icons.broken_image,
+                                              color: Colors.black54);
+                                        },
+                                      ),
                                     )
                                   : type == 'text'
                                       ? isCurrentUser
@@ -334,7 +349,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                                                 fontSize: 15,
                                                 color: isCurrentUser
                                                     ? Colors.white
-                                                    : Colors.black,
+                                                    : Colors.black54,
                                               ),
                                             )
                                           : MarkdownBody(
@@ -344,7 +359,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                                                   fontSize: 15,
                                                   color: isCurrentUser
                                                       ? Colors.white
-                                                      : Colors.black,
+                                                      : Colors.black54,
                                                 ),
                                               ),
                                             )
@@ -364,7 +379,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                                                     fontSize: 15,
                                                     color: isCurrentUser
                                                         ? Colors.white
-                                                        : Colors.black,
+                                                        : Colors.black54,
                                                   ),
                                                   overflow:
                                                       TextOverflow.ellipsis,

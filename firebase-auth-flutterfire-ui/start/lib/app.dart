@@ -8,7 +8,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+        primaryColor: const Color(0xFF8EC6C5),
+        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+        appBarTheme: const AppBarTheme(
+          color: Color(0xFF8EC6C5),
+        ),
+        // colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
       // initialRoute: '/',

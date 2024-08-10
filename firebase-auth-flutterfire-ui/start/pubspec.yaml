@@ -19,7 +19,7 @@ dependencies:
   speech_to_text: ^6.6.2
   file_picker: ^8.0.7
   gradient_borders: ^1.0.0
-  google_generative_ai: ^0.2.2
+  google_generative_ai: ^0.4.4
   flutter_markdown: ^0.7.3+1
   web: ^0.5.1
   test_api: ^0.7.2
