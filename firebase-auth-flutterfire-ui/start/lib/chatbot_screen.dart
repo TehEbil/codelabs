@@ -78,9 +78,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       //   _file = null;
       // } else {
       var content = Content.text(text.toString());
-      print(content);
       response = await _chat.sendMessage(content);
-      print(response);
       // }
       return response.text ?? '';
     } catch (e) {
@@ -197,13 +195,6 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     }
 
     _scrollToBottom();
-  }
-
-  Future<String> fetchGeminiResponseOld(String userMessage) async {
-    // Simulate a delay for the API response
-    await Future.delayed(const Duration(seconds: 1));
-    // You can replace this with actual API call logic
-    return 'Gemini response to: $userMessage';
   }
 
   void _scrollToBottom() {
