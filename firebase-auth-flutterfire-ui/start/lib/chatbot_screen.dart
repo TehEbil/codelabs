@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'chat/speech_service.dart';
-import 'chat/chat_message_bubble.dart';
+// import 'chat/chat_message_bubble.dart';
 import 'chat/date_badge.dart';
 import 'chat/firebase_service.dart';
 import 'chat/file_picker_service.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:intl/intl.dart';
+// Import the necessary packages for Gemini
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -24,8 +26,33 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
 
+  // Initialize Gemini models
+  late final GenerativeModel _model;
+  // late final GenerativeModel _visionModel;
+  late final ChatSession _chat;
+  // String? _file;
+
   bool isListening = false;
   final ValueNotifier<bool> isListeningNotifier = ValueNotifier<bool>(false);
+
+  @override
+  void initState() {
+    super.initState();
+
+    const apiKey = 'AIzaSyAB_Dxfpf2YmxxJqZmP9m2kyFOXPOOONSo';
+
+    _model = GenerativeModel(
+      model: 'gemini-1.5-flash',
+      apiKey: apiKey,
+    );
+
+    // _visionModel = GenerativeModel(
+    //   model: 'gemini-pro-vision',
+    //   apiKey: apiKey,
+    // );
+
+    _chat = _model.startChat();
+  }
 
   @override
   void dispose() {
@@ -34,6 +61,32 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     _focusNode.dispose();
     isListeningNotifier.dispose();
     super.dispose();
+  }
+
+  Future<String> fetchGeminiResponse(String text) async {
+    try {
+      late final GenerateContentResponse response;
+      // if (_file != null) {
+      //   final firstImage = await File(_file!).readAsBytes();
+      //   final prompt = TextPart(text);
+      //   final imageParts = [
+      //     DataPart('image/jpeg', firstImage),
+      //   ];
+      //   response = await _visionModel.generateContent([
+      //     Content.multi([prompt, ...imageParts])
+      //   ]);
+      //   _file = null;
+      // } else {
+      var content = Content.text(text.toString());
+      print(content);
+      response = await _chat.sendMessage(content);
+      print(response);
+      // }
+      return response.text ?? '';
+    } catch (e) {
+      print('Error fetching Gemini response: $e');
+      return 'Error fetching Gemini response: $e';
+    }
   }
 
   Future<void> _recordAndSendMessage() async {
@@ -129,10 +182,10 @@ class ChatbotScreenState extends State<ChatbotScreen> {
       _focusNode.requestFocus();
       _scrollToBottom();
 
-      await Future<void>.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
+      // await Future<void>.delayed(const Duration(seconds: 1));
+      // if (!mounted) return;
 
-      // Fetch the Gemini response
+      // // Fetch the Gemini response
       String aiMessage = await fetchGeminiResponse(userMessage);
       await _firebaseService.sendMessage(aiMessage, 'text', 'AI');
     } catch (e) {
@@ -146,31 +199,11 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
   }
 
-  Future<String> fetchGeminiResponse(String userMessage) async {
+  Future<String> fetchGeminiResponseOld(String userMessage) async {
     // Simulate a delay for the API response
     await Future.delayed(const Duration(seconds: 1));
     // You can replace this with actual API call logic
     return 'Gemini response to: $userMessage';
-  }
-
-  Future<String> fetchGeminiResponseNew(String userMessage) async {
-    final response = await http.post(
-      Uri.parse('https://gemini-api-url.com/generate-response'),
-      headers: <String, String>{
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer YOUR_API_KEY',
-      },
-      body: jsonEncode(<String, String>{
-        'message': userMessage,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['response']; // Adjust based on the actual response structure
-    } else {
-      throw Exception('Failed to load Gemini response');
-    }
   }
 
   void _scrollToBottom() {
@@ -186,7 +219,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
   }
 
-  void _openFile(BuildContext context, String url) async {
+  void _openFile(String url) async {
     final uri = Uri.parse(url);
     try {
       if (await canLaunchUrl(uri)) {
@@ -249,6 +282,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                     final message = data['message'] ?? 'No message';
                     final sender = data['sender'] ?? 'Unknown sender';
                     final isCurrentUser = sender == 'User';
+                    final type = data['type'] ?? 'text';
 
                     final Timestamp? timestamp =
                         data['timestamp'] as Timestamp?;
@@ -268,13 +302,97 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                           : CrossAxisAlignment.start,
                       children: [
                         if (showDateBadge) DateBadge(timestamp: timestamp),
-                        ChatMessageBubble(
-                          message: message,
-                          isCurrentUser: isCurrentUser,
-                          type: data['type'],
-                          time: time,
-                          sender: data['sender'],
-                          onFileTap: (url) => _openFile(context, url),
+                        Container(
+                          padding: const EdgeInsets.only(
+                              left: 14, right: 14, top: 10, bottom: 10),
+                          child: Align(
+                            alignment: (isCurrentUser
+                                ? Alignment.topRight
+                                : Alignment.topLeft),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withOpacity(0.5),
+                                    spreadRadius: 2,
+                                    blurRadius: 5,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                                color: (isCurrentUser
+                                    ? const Color(0xFFF69170)
+                                    : Colors.white),
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: type == 'image'
+                                  ? Image.network(
+                                      message,
+                                      width: 200,
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        return const Icon(Icons.broken_image,
+                                            color: Colors.red);
+                                      },
+                                    )
+                                  : type == 'text'
+                                      ? isCurrentUser
+                                          ? Text(
+                                              message,
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                color: isCurrentUser
+                                                    ? Colors.white
+                                                    : Colors.black,
+                                              ),
+                                            )
+                                          : MarkdownBody(
+                                              data: message,
+                                              styleSheet: MarkdownStyleSheet(
+                                                p: TextStyle(
+                                                  fontSize: 15,
+                                                  color: isCurrentUser
+                                                      ? Colors.white
+                                                      : Colors.black,
+                                                ),
+                                              ),
+                                            )
+                                      : InkWell(
+                                          onTap: () => _openFile(
+                                              message), // Use the passed callback
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                  Icons.insert_drive_file,
+                                                  color: Colors.black54),
+                                              const SizedBox(width: 5),
+                                              Flexible(
+                                                child: Text(
+                                                  'Open File',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: isCurrentUser
+                                                        ? Colors.white
+                                                        : Colors.black,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0, vertical: 5.0),
+                          child: Text(
+                            DateFormat('HH:mm').format(time),
+                            style: const TextStyle(
+                                fontSize: 10, color: Colors.black54),
+                          ),
                         ),
                       ],
                     );
