@@ -30,7 +30,9 @@ class FirebaseService {
 
   Future<DocumentReference> createNewChatWithTitle(String firstMessage) async {
     try {
+      print(firstMessage);
       final title = await generateTitleFromMessage(firstMessage);
+      print(title);
       DocumentReference newChat = await chatCollection.add({
         'userId': currentUser,
         'timestamp': FieldValue.serverTimestamp(),
@@ -44,27 +46,26 @@ class FirebaseService {
   }
 
   Future<String> generateTitleFromMessage(String message) async {
+    const apiKey = 'AIzaSyAB_Dxfpf2YmxxJqZmP9m2kyFOXPOOONSo';
+
     final model = GenerativeModel(
-      model: 'gemini-1.5-flash-latest',
-      apiKey: 'YOUR_API_KEY', // Replace with your actual API key
-    );
+        model: 'gemini-1.5-flash-latest',
+        apiKey: apiKey,
+        safetySettings: [
+          SafetySetting(HarmCategory.harassment, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.none),
+          SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.none)
+        ]);
 
-    try {
-      // Start a chat session to send the message
-      final chat = model.startChat();
+    final content = [
+      Content.text(
+          'Bitte gebe mir eine passende, kurze Überschrift ohne markdown Formatierungen zu folgender Frage/Aussage: $message')
+    ];
+    final response2 = await model.generateContent(content);
+    final title = response2.text ?? 'Chat';
 
-      // Send the message and await response
-      final response = await chat.sendMessage(Content.text(message));
-
-      // Extract the title from the response
-      // You might need to parse or interpret this response based on how the API returns titles
-      final title = response.text ?? 'Chat';
-
-      return title;
-    } catch (e) {
-      print('Error generating title: $e');
-      return 'Chat';
-    }
+    return title;
   }
 
   Future<String> uploadFile(Uint8List fileBytes, String fileName) async {

@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDX8ayyUfFXhQUB4fb6wBA7W9I7hexEOOA',
-    appId: '1:834336712270:android:a83224a9bc8b11782d851f',
+    appId: '1:834336712270:android:373ca437bd335dc42d851f',
     messagingSenderId: '834336712270',
     projectId: 'spiritualwelfare',
     storageBucket: 'spiritualwelfare.appspot.com',
@@ -64,6 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '834336712270',
     projectId: 'spiritualwelfare',
     storageBucket: 'spiritualwelfare.appspot.com',
+    iosClientId: '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
     iosBundleId: 'com.example.start',
   );
 
@@ -73,6 +74,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '834336712270',
     projectId: 'spiritualwelfare',
     storageBucket: 'spiritualwelfare.appspot.com',
+    iosClientId: '834336712270-aflmo19e28cp61ljo2ma39l0vhftb2q1.apps.googleusercontent.com',
     iosBundleId: 'com.example.start',
   );
 
@@ -85,4 +87,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'spiritualwelfare.appspot.com',
     measurementId: 'G-TQFN0XQYF3',
   );
+
 }
