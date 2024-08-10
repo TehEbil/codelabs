@@ -11,6 +11,32 @@ class FirebaseService {
   final String currentUser =
       FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
 
+  Future<DocumentReference> createEmptyChat() async {
+    try {
+      // Create an empty chat without a title
+      DocumentReference newChat = await chatCollection.add({
+        'userId': currentUser,
+        'timestamp': FieldValue.serverTimestamp(),
+        'title': '', // No title initially
+      });
+      return newChat;
+    } catch (e) {
+      print('Error creating empty chat: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateChatTitle(String chatId, String title) async {
+    try {
+      await chatCollection.doc(chatId).update({
+        'title': title, // Set the title
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error updating chat title: $e');
+    }
+  }
+
   Future<void> sendMessage(
       String chatId, String message, String type, String sender) async {
     try {

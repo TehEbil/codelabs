@@ -51,25 +51,61 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<DocumentSnapshot>> _fetchLatestChats() async {
-    // Fetch all chats for the current user
-    QuerySnapshot snapshot = await _firebaseService.chatCollection
-        .where('userId', isEqualTo: _firebaseService.currentUser)
-        .orderBy('timestamp', descending: true)
-        .get();
+    try {
+      QuerySnapshot snapshot = await _firebaseService.chatCollection
+          .where('userId', isEqualTo: _firebaseService.currentUser)
+          .where('title', isNotEqualTo: '') // Only fetch chats with titles
+          .orderBy('timestamp', descending: true)
+          .orderBy('title') // Ensure proper index creation for this query
+          .get();
 
-    return snapshot.docs;
+      return snapshot.docs;
+    } catch (e) {
+      print('Error fetching chats: $e');
+      return []; // Return an empty list if there is an error
+    }
+  }
+
+  Future<DocumentReference?> _findEmptyChat() async {
+    try {
+      QuerySnapshot snapshot = await _firebaseService.chatCollection
+          .where('userId', isEqualTo: _firebaseService.currentUser)
+          .where('title', isEqualTo: '') // Find chat without a title
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first.reference;
+      }
+      return null;
+    } catch (e) {
+      print('Error finding empty chat: $e');
+      return null;
+    }
   }
 
   void _openChat(BuildContext context, DocumentSnapshot chat) {
+    print(chat.id);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChatbotScreen(chatId: chat.id), // Pass chat ID
+        builder: (context) => ChatbotScreen(chatId: chat.id),
       ),
     ).then((_) {
-      // Refresh the HomeScreen when returning from the chat screen
-      setState(() {});
+      setState(() {}); // Refresh the list when returning from chat
     });
+  }
+
+  void _startNewChat(BuildContext context) async {
+    DocumentReference? emptyChat = await _findEmptyChat();
+    if (emptyChat != null) {
+      // Use the existing empty chat
+      _openChat(context, await emptyChat.get());
+    } else {
+      // Create a new empty chat
+      DocumentReference newChat = await _firebaseService.createEmptyChat();
+      _openChat(context, await newChat.get());
+    }
   }
 
   @override
@@ -186,16 +222,7 @@ class HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const ChatbotScreen(), // New chat screen
-                  ),
-                ).then((_) {
-                  // Refresh the HomeScreen when returning from the chat screen
-                  setState(() {});
-                });
+                _startNewChat(context); // Start a new or empty chat
               },
               child: const Text('New Chat'),
             ),

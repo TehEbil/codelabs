@@ -32,7 +32,8 @@ class ChatbotScreenState extends State<ChatbotScreen> {
   bool isListening = false;
   final ValueNotifier<bool> isListeningNotifier = ValueNotifier<bool>(false);
 
-  late Future<String> chatIdFuture;
+  Future<String>? chatIdFuture;
+  bool chatInitialized = false; // New variable to track chat initialization
 
   @override
   void initState() {
@@ -44,50 +45,55 @@ class ChatbotScreenState extends State<ChatbotScreen> {
         'Du bist ein einfühlsamer und verständnisvoller Chatbot, der als erfahrener Psychologe und Therapeut agiert. Deine Aufgabe ist es, den Nutzern bei einer Vielzahl von persönlichen und emotionalen Herausforderungen zu helfen. Deine Antworten sollten stets respektvoll, unterstützend und informativ sein. Dein Ziel ist es, den Nutzern zu helfen, ihre Gedanken und Gefühle besser zu verstehen und mögliche Lösungsansätze oder Bewältigungsstrategien aufzuzeigen. Du solltest auf folgende Themen eingehen können:\n\n1) Depressionen: Biete Unterstützung und Informationen zu Symptomen, Bewältigungsstrategien und Ermutigung, professionelle Hilfe in Anspruch zu nehmen.\n\n2) Selbstmordgedanken: Reagiere sofort mit Mitgefühl und Dringlichkeit, und ermutige den Nutzer, sich an Notdienste oder Fachkräfte zu wenden. Betone, dass Hilfe verfügbar ist.\n\n3) Sexuelle Orientierung und Identität (homo- oder bisexuelle Probleme, Transgender): Sei respektvoll und unterstützend, fördere Akzeptanz und Selbstannahme und biete Informationen über relevante Ressourcen und Gemeinschaften.\n\n4) Sexueller Missbrauch: Handle mit äußerster Sensibilität, biete Informationen über Unterstützungsangebote und ermutige die betroffene Person, sich an Fachleute oder Hilfsorganisationen zu wenden.\n\n5) Beziehungsprobleme (Ehe, Paarbeziehungen, Freundschaften): Biete Ratschläge zu Kommunikation, Konfliktlösung und Beziehungsstärkung, und fördere das Verständnis für die Perspektiven aller Beteiligten.\n\nAchte darauf, stets die Grenzen deiner Rolle als Chatbot zu erkennen und ermutige die Nutzer, professionelle Hilfe in Anspruch zu nehmen, wenn es nötig ist. Sei eine Quelle des Mitgefühls und der Unterstützung, und respektiere die Privatsphäre und Vertraulichkeit der Nutzer.';
 
     _model = GenerativeModel(
-        model: 'gemini-1.5-flash-latest',
-        systemInstruction: Content.system(systemInstruction),
-        apiKey: apiKey,
-        safetySettings: [
-          SafetySetting(HarmCategory.harassment, HarmBlockThreshold.none),
-          SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.none),
-          SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.none),
-          SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.none)
-        ]);
+      model: 'gemini-1.5-flash-latest',
+      systemInstruction: Content.system(systemInstruction),
+      apiKey: apiKey,
+      safetySettings: [
+        SafetySetting(HarmCategory.harassment, HarmBlockThreshold.none),
+        SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.none),
+        SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.none),
+        SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.none)
+      ],
+    );
 
-    chatIdFuture = _initializeChat();
+    _initializeChat(); // Initialize the chat session
   }
 
-  Future<String> _initializeChat() async {
+  Future<void> _initializeChat() async {
     try {
-      String chatId;
-
       if (widget.chatId != null) {
-        // Use the existing chat ID
-        chatId = widget.chatId!;
+        // Existing chat handling
+        QuerySnapshot messagesSnapshot = await _firebaseService.chatCollection
+            .doc(widget.chatId)
+            .collection('messages')
+            .orderBy('timestamp', descending: false)
+            .get();
+
+        List<Content> history = [];
+        for (var messageDoc in messagesSnapshot.docs) {
+          var messageData = messageDoc.data() as Map<String, dynamic>;
+          history.add(Content.text(messageData['message'] ?? ''));
+        }
+
+        _chat = _model.startChat(history: history);
+
+        DocumentSnapshot chatSnapshot =
+            await _firebaseService.chatCollection.doc(widget.chatId).get();
+
+        var chatData = chatSnapshot.data() as Map<String, dynamic>;
+        chatInitialized =
+            history.isNotEmpty || (chatData['title'] ?? '').isNotEmpty;
+
+        chatIdFuture = Future.value(widget.chatId); // Correct future setup
+        setState(() {});
       } else {
-        // Create a new chat and get its ID with title based on first message
-        DocumentReference newChat = await _firebaseService
-            .createNewChatWithTitle('Start a new conversation...');
-        chatId = newChat.id;
+        // New chat handling
+        _chat = _model.startChat();
+        DocumentReference newChat = await _firebaseService.createEmptyChat();
+        chatIdFuture =
+            Future.value(newChat.id); // Set the future with new chat ID
+        chatInitialized = false;
       }
-
-      // Load chat history for the existing chat
-      QuerySnapshot messagesSnapshot = await _firebaseService.chatCollection
-          .doc(chatId)
-          .collection('messages')
-          .orderBy('timestamp', descending: false)
-          .get();
-
-      List<Content> history = [];
-      for (var messageDoc in messagesSnapshot.docs) {
-        var messageData = messageDoc.data() as Map<String, dynamic>;
-        history.add(Content.text(messageData['message'] ?? ''));
-      }
-
-      // Start a new chat session with or without history
-      _chat = _model.startChat(history: history);
-
-      return chatId;
     } catch (e) {
       print('Error initializing chat: $e');
       rethrow;
@@ -137,26 +143,44 @@ class ChatbotScreenState extends State<ChatbotScreen> {
     await Future.delayed(const Duration(milliseconds: 200));
     _speechService.stop();
     if (_messageController.text.isNotEmpty) {
-      _sendMessage(chatId);
+      _sendMessage();
     }
     _messageController.clear();
     isListeningNotifier.value = false;
   }
 
-  Widget _buildInputArea(String chatId) {
+  Widget _buildInputArea(String? chatId) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Row(
         children: [
           IconButton(
             icon: const Icon(Icons.photo),
-            onPressed: () => _filePickerService.pickAndUploadFile(chatId,
-                isPhoto: true), // Pass chatId
+            onPressed: () {
+              if (chatId != null) {
+                _filePickerService.pickAndUploadFile(chatId, isPhoto: true);
+              } else {
+                // Handle the case where chatId is null (e.g., show a message or create a chat)
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Please start a chat to upload files.')),
+                );
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.attach_file),
-            onPressed: () =>
-                _filePickerService.pickAndUploadFile(chatId), // Pass chatId
+            onPressed: () {
+              if (chatId != null) {
+                _filePickerService.pickAndUploadFile(chatId);
+              } else {
+                // Handle the case where chatId is null
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Please start a chat to upload files.')),
+                );
+              }
+            },
           ),
           ValueListenableBuilder<bool>(
             valueListenable: isListeningNotifier,
@@ -168,7 +192,7 @@ class ChatbotScreenState extends State<ChatbotScreen> {
                   }
                 },
                 onLongPressEnd: (_) {
-                  if (isListening) {
+                  if (isListening && chatId != null) {
                     _stopRecording(chatId);
                   }
                 },
@@ -186,38 +210,52 @@ class ChatbotScreenState extends State<ChatbotScreen> {
               decoration: const InputDecoration(
                 hintText: 'Enter your message',
               ),
-              onSubmitted: (_) => _sendMessage(chatId),
+              onSubmitted: (_) {
+                _sendMessage();
+              },
             ),
           ),
           IconButton(
             icon: const Icon(Icons.send),
-            onPressed: () => _sendMessage(chatId),
+            onPressed: () {
+              _sendMessage();
+            },
           ),
         ],
       ),
     );
   }
 
-  Future<void> _sendMessage(String chatId) async {
+  Future<void> _sendMessage() async {
     if (_messageController.text.isEmpty) return;
 
     final userMessage = _messageController.text;
     try {
-      // Send the user's message
+      final chatId =
+          await chatIdFuture!; // Await here to ensure we get the chat ID
+
       await _firebaseService.sendMessage(chatId, userMessage, 'text', 'User');
       _messageController.clear();
       _focusNode.requestFocus();
       _scrollToBottom();
 
-      // Fetch AI's response and send it
+      if (!chatInitialized) {
+        final title =
+            await _firebaseService.generateTitleFromMessage(userMessage);
+        await _firebaseService.updateChatTitle(chatId, title);
+        chatInitialized = true;
+        setState(() {});
+      }
+
       String aiMessage = await fetchGeminiResponse(userMessage);
       await _firebaseService.sendMessage(chatId, aiMessage, 'text', 'AI');
     } catch (e) {
-      if (!mounted) return;
       print('Error sending message: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error sending message: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending message: $e')),
+        );
+      }
     }
 
     _scrollToBottom();
@@ -281,168 +319,190 @@ class ChatbotScreenState extends State<ChatbotScreen> {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
 
-          final chatId = snapshot.data!;
+          final chatId = snapshot.data; // Nullable until initialized
 
+          // Ensure StreamBuilder uses a valid stream only when chatId is available
           return Column(
             children: [
               Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _firebaseService.chatCollection
-                      .doc(chatId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: false)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Center(child: Text('No messages yet.'));
-                    }
+                child: chatId != null
+                    ? StreamBuilder<QuerySnapshot>(
+                        stream: _firebaseService.chatCollection
+                            .doc(chatId) // Use the correct chatId here
+                            .collection('messages')
+                            .orderBy('timestamp', descending: false)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          if (snapshot.hasError) {
+                            return Center(
+                                child: Text('Error: ${snapshot.error}'));
+                          }
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return const Center(
+                                child: Text('No messages yet.'));
+                          }
 
-                    List<DocumentSnapshot> docs = snapshot.data!.docs;
+                          List<DocumentSnapshot> docs = snapshot.data!.docs;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            _scrollToBottom();
+                          });
 
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      _scrollToBottom();
-                    });
+                          return ListView.builder(
+                            controller: _scrollController,
+                            itemCount: docs.length,
+                            itemBuilder: (context, index) {
+                              final doc = docs[index];
+                              final data = doc.data() as Map<String, dynamic>;
 
-                    return ListView.builder(
-                      controller: _scrollController,
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final doc = docs[index];
-                        final data = doc.data() as Map<String, dynamic>;
+                              final message = data['message'] ?? 'No message';
+                              final sender = data['sender'] ?? 'Unknown sender';
+                              final isCurrentUser = sender == 'User';
+                              final type = data['type'] ?? 'text';
 
-                        final message = data['message'] ?? 'No message';
-                        final sender = data['sender'] ?? 'Unknown sender';
-                        final isCurrentUser = sender == 'User';
-                        final type = data['type'] ?? 'text';
+                              final Timestamp? timestamp =
+                                  data['timestamp'] as Timestamp?;
+                              final time =
+                                  timestamp?.toDate() ?? DateTime.now();
 
-                        final Timestamp? timestamp =
-                            data['timestamp'] as Timestamp?;
-                        final time = timestamp?.toDate() ?? DateTime.now();
+                              bool showDateBadge = false;
+                              if (index == 0 ||
+                                  (index > 0 &&
+                                      !_isSameDay(docs[index - 1]['timestamp'],
+                                          timestamp))) {
+                                showDateBadge = true;
+                              }
 
-                        bool showDateBadge = false;
-                        if (index == 0 ||
-                            (index > 0 &&
-                                !_isSameDay(
-                                    docs[index - 1]['timestamp'], timestamp))) {
-                          showDateBadge = true;
-                        }
-
-                        return Column(
-                          crossAxisAlignment: isCurrentUser
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            if (showDateBadge) DateBadge(timestamp: timestamp),
-                            Container(
-                              padding: const EdgeInsets.only(
-                                  left: 14, right: 14, top: 10, bottom: 10),
-                              child: Align(
-                                alignment: (isCurrentUser
-                                    ? Alignment.topRight
-                                    : Alignment.topLeft),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.grey.withOpacity(0.3),
-                                        spreadRadius: 1,
-                                        blurRadius: 5,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                    color: (isCurrentUser
-                                        ? const Color(0xFF8EC6C5)
-                                        : const Color(0xFFD9EAD3)),
-                                  ),
-                                  padding: const EdgeInsets.all(16),
-                                  child: type == 'image'
-                                      ? InkWell(
-                                          onTap: () => _openFile(message),
-                                          child: Image.network(
-                                            message,
-                                            width: 100,
-                                            errorBuilder:
-                                                (context, error, stackTrace) {
-                                              return const Icon(
-                                                  Icons.broken_image,
-                                                  color: Colors.black54);
-                                            },
-                                          ),
-                                        )
-                                      : type == 'text'
-                                          ? isCurrentUser
-                                              ? Text(
-                                                  message,
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    color: isCurrentUser
-                                                        ? Colors.white
-                                                        : Colors.black54,
-                                                  ),
-                                                )
-                                              : MarkdownBody(
-                                                  data: message,
-                                                  styleSheet:
-                                                      MarkdownStyleSheet(
-                                                    p: TextStyle(
-                                                      fontSize: 15,
-                                                      color: isCurrentUser
-                                                          ? Colors.white
-                                                          : Colors.black54,
-                                                    ),
-                                                  ),
-                                                )
-                                          : InkWell(
-                                              onTap: () => _openFile(message),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      Icons.insert_drive_file,
-                                                      color: Colors.black54),
-                                                  const SizedBox(width: 5),
-                                                  Flexible(
-                                                    child: Text(
-                                                      'Open File',
-                                                      style: TextStyle(
-                                                        fontSize: 15,
-                                                        color: isCurrentUser
-                                                            ? Colors.white
-                                                            : Colors.black54,
-                                                      ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                              return Column(
+                                crossAxisAlignment: isCurrentUser
+                                    ? CrossAxisAlignment.end
+                                    : CrossAxisAlignment.start,
+                                children: [
+                                  if (showDateBadge)
+                                    DateBadge(timestamp: timestamp),
+                                  Container(
+                                    padding: const EdgeInsets.only(
+                                        left: 14,
+                                        right: 14,
+                                        top: 10,
+                                        bottom: 10),
+                                    child: Align(
+                                      alignment: (isCurrentUser
+                                          ? Alignment.topRight
+                                          : Alignment.topLeft),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.grey.withOpacity(0.3),
+                                              spreadRadius: 1,
+                                              blurRadius: 5,
+                                              offset: const Offset(0, 3),
                                             ),
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0, vertical: 5.0),
-                              child: Text(
-                                DateFormat('HH:mm').format(time),
-                                style: const TextStyle(
-                                    fontSize: 10, color: Colors.black54),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
+                                          ],
+                                          color: (isCurrentUser
+                                              ? const Color(0xFF8EC6C5)
+                                              : const Color(0xFFD9EAD3)),
+                                        ),
+                                        padding: const EdgeInsets.all(16),
+                                        child: type == 'image'
+                                            ? InkWell(
+                                                onTap: () => _openFile(message),
+                                                child: Image.network(
+                                                  message,
+                                                  width: 100,
+                                                  errorBuilder: (context, error,
+                                                      stackTrace) {
+                                                    return const Icon(
+                                                        Icons.broken_image,
+                                                        color: Colors.black54);
+                                                  },
+                                                ),
+                                              )
+                                            : type == 'text'
+                                                ? isCurrentUser
+                                                    ? Text(
+                                                        message,
+                                                        style: TextStyle(
+                                                          fontSize: 15,
+                                                          color: isCurrentUser
+                                                              ? Colors.white
+                                                              : Colors.black54,
+                                                        ),
+                                                      )
+                                                    : MarkdownBody(
+                                                        data: message,
+                                                        styleSheet:
+                                                            MarkdownStyleSheet(
+                                                          p: TextStyle(
+                                                            fontSize: 15,
+                                                            color: isCurrentUser
+                                                                ? Colors.white
+                                                                : Colors
+                                                                    .black54,
+                                                          ),
+                                                        ),
+                                                      )
+                                                : InkWell(
+                                                    onTap: () =>
+                                                        _openFile(message),
+                                                    child: Row(
+                                                      children: [
+                                                        const Icon(
+                                                            Icons
+                                                                .insert_drive_file,
+                                                            color:
+                                                                Colors.black54),
+                                                        const SizedBox(
+                                                            width: 5),
+                                                        Flexible(
+                                                          child: Text(
+                                                            'Open File',
+                                                            style: TextStyle(
+                                                              fontSize: 15,
+                                                              color: isCurrentUser
+                                                                  ? Colors.white
+                                                                  : Colors
+                                                                      .black54,
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16.0, vertical: 5.0),
+                                    child: Text(
+                                      DateFormat('HH:mm').format(time),
+                                      style: const TextStyle(
+                                          fontSize: 10, color: Colors.black54),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      )
+                    : const Center(child: Text('Start a new conversation.')),
               ),
-              _buildInputArea(chatId),
+
+              _buildInputArea(chatId), // Pass chat ID, even if null
             ],
           );
         },
